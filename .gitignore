@@ -1,0 +1,17 @@
+# Node
+node_modules/
+dist/
+.env
+
+# SvelteKit
+.svelte-kit/
+build/
+
+# Tauri & Rust
+src-tauri/target/
+src-tauri/gen/
+**/*.rs.bk
+
+# OS
+.DS_Store
+Thumbs.db
