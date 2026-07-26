@@ -16,6 +16,7 @@ export async function getDb() {
       title TEXT NOT NULL,
       durationMinutes INTEGER NOT NULL,
       scheduledDate TEXT NOT NULL,
+      scheduledTime TEXT NOT NULL,
       status TEXT NOT NULL
     );
   `);

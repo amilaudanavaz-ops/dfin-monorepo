@@ -1,72 +1,83 @@
-<!-- src/routes/+page.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { getDb } from '$lib/db/database';
+  import TaskInput from '$lib/components/schedule/TaskInput.svelte';
+  import Calendar from '$lib/components/schedule/Calendar.svelte';
+  import Timeline from '$lib/components/session/Timeline.svelte';
+  import { startReminderEngine } from '$lib/sync/ReminderEngine';
 
-  let tasks = $state<{ id: string; title: string; durationMinutes: number }[]>([]);
-  let dbStatus = $state('Initializing database...');
+  let tasks = $state<any[]>([]);
+  let errorMsg = $state('');
+  let activeView = $state('schedule');
+  
 
   onMount(async () => {
-    try {
-      const db = await getDb();
-      dbStatus = 'Database connected successfully (Offline SQLite).';
-      await loadTasks();
-    } catch (error) {
-      dbStatus = `Database connection failed: ${error}`;
-    }
+    await loadTasks();
+    await startReminderEngine();
   });
 
   async function loadTasks() {
-    const db = await getDb();
-    tasks = await db.select('SELECT * FROM tasks');
+    try {
+      const db = await getDb();
+      // Fetch tasks ordered by time
+      tasks = await db.select('SELECT * FROM tasks ORDER BY scheduledTime ASC');
+    } catch (e) {
+      errorMsg = `Failed to load tasks: ${e}`;
+    }
   }
 
-  async function addDummyTask() {
+  async function handleSaveTask(newTask: any) {
     try {
-      console.log("Button clicked, fetching DB...");
       const db = await getDb();
-      const uniqueId = crypto.randomUUID();
-      
-      console.log("Executing SQL insert...");
       await db.execute(
-        'INSERT INTO tasks (id, title, durationMinutes, scheduledDate, status) VALUES ($1, $2, $3, $4, $5)',
-        [uniqueId, 'Test UI Component', 60, '2026-07-26', 'pending']
+        'INSERT INTO tasks (id, title, durationMinutes, scheduledDate, scheduledTime, status) VALUES ($1, $2, $3, $4, $5, $6)',
+        [newTask.id, newTask.title, newTask.durationMinutes, newTask.scheduledDate, newTask.scheduledTime, newTask.status]
       );
-      
-      console.log("Insert successful, reloading tasks...");
-      await loadTasks(); 
-    } catch (error) {
-      // This will force the error to show up as a popup on your screen
-      alert(`Error inserting task: ${error}`);
-      console.error(error);
+      await loadTasks(); // Refresh the UI
+    } catch (e) {
+      alert(`Database error: ${e}`);
     }
   }
 </script>
 
-<main class="min-h-screen flex flex-col items-center justify-center p-8">
-  <div class="max-w-md w-full bg-dfinSurface border border-dfinAccent rounded-xl p-6 shadow-2xl">
-    
-    <h1 class="text-2xl font-bold mb-2">DFIN Architecture</h1>
-    <p class="text-sm text-dfinMuted mb-6">{dbStatus}</p>
-
-    <button 
-      onclick={addDummyTask}
-      class="w-full py-3 mb-6 bg-dfinAccent hover:bg-opacity-80 rounded-lg text-dfinText font-semibold transition-all shadow-[0_0_15px_rgba(38,38,38,0.5)]">
-      + Insert Dummy Task
-    </button>
-
-    <div class="space-y-3">
-      {#if tasks.length === 0}
-        <p class="text-center text-sm text-dfinMuted italic">No tasks in local storage.</p>
-      {:else}
-        {#each tasks as task}
-          <div class="p-4 rounded-lg bg-dfinBase border border-dfinAccent/50 flex justify-between items-center">
-            <span class="font-medium text-dfinText">{task.title}</span>
-            <span class="text-xs text-dfinMuted">{task.durationMinutes}m</span>
-          </div>
-        {/each}
-      {/if}
+<main class="min-h-screen p-8 max-w-6xl mx-auto flex flex-col">
+  <header class="mb-8 flex justify-between items-end">
+    <div>
+      <h1 class="text-3xl font-bold tracking-tight text-white">DFIN</h1>
+      {#if errorMsg} <p class="text-red-500 text-xs mt-2">{errorMsg}</p> {/if}
     </div>
+    
+    <!-- View Toggle Tabs -->
+    <div class="flex bg-dfinSurface border border-dfinAccent rounded-lg p-1">
+      <button 
+        onclick={() => activeView = 'schedule'}
+        class="px-4 py-2 text-sm font-medium rounded-md transition-colors {activeView === 'schedule' ? 'bg-dfinAccent text-white' : 'text-dfinMuted hover:text-white'}">
+        1. Blueprint
+      </button>
+      <button 
+        onclick={() => activeView = 'session'}
+        class="px-4 py-2 text-sm font-medium rounded-md transition-colors {activeView === 'session' ? 'bg-dfinAccent text-white' : 'text-dfinMuted hover:text-white'}">
+        2. Session
+      </button>
+    </div>
+  </header>
 
+  <div class="flex-grow">
+    {#if activeView === 'schedule'}
+      <!-- SCHEDULE VIEW -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="md:col-span-1">
+          <TaskInput onSave={handleSaveTask} />
+        </div>
+        <div class="md:col-span-2">
+          <Calendar {tasks} />
+        </div>
+      </div>
+    {:else}
+      <!-- SESSION VIEW -->
+      <div class="max-w-3xl mx-auto">
+        <Timeline {tasks} />
+      </div>
+    {/if}
   </div>
 </main>
