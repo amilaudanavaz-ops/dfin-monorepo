@@ -19,7 +19,13 @@
   
   <div class="text-xs text-dfinMuted flex justify-between items-end">
     <span>Original: {task.scheduledTime}</span>
-    <!-- The actual start time will be injected here by the T0 engine later -->
-    <span class="text-white font-medium">Pending $T_0$</span>
+    
+    <span class="text-white font-medium">
+      {#if task.actualStartTimeFormatted}
+        Starts at {task.actualStartTimeFormatted}
+      {:else}
+        Pending $T_0$
+      {/if}
+    </span>
   </div>
 </div>

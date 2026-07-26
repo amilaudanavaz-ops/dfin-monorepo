@@ -1,18 +1,16 @@
 <script lang="ts">
-  // Accept a callback prop to handle the save action
   let { onSave } = $props<{ onSave: (task: any) => Promise<void> }>();
 
-  // Svelte 5 Reactive State
   let title = $state('');
   let durationMinutes = $state(60);
   let scheduledDate = $state(new Date().toISOString().split('T')[0]);
   let scheduledTime = $state('09:00');
+  let sendToInbox = $state(false); // NEW STATE
   let isSubmitting = $state(false);
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
     if (!title.trim()) return;
-
     isSubmitting = true;
     
     await onSave({
@@ -20,16 +18,15 @@
       title,
       durationMinutes,
       scheduledDate,
-      scheduledTime,
-      status: 'pending'
+      // If sent to inbox, clear the time and set status to unassigned
+      scheduledTime: sendToInbox ? '' : scheduledTime,
+      status: sendToInbox ? 'unassigned' : 'pending'
     });
 
-    // Reset form
     title = '';
     isSubmitting = false;
   }
 </script>
-
 <form onsubmit={handleSubmit} class="bg-dfinSurface p-5 rounded-xl border border-dfinAccent shadow-lg">
   <h2 class="text-lg font-semibold text-dfinText mb-4">Schedule Task</h2>
   
@@ -41,17 +38,26 @@
         placeholder="e.g., Review Financials" />
     </div>
 
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label class="block text-xs text-dfinMuted mb-1" for="date">Date</label>
-        <input id="date" type="date" bind:value={scheduledDate} required
-          class="w-full bg-dfinBase border border-dfinAccent rounded-lg p-2 text-dfinText focus:outline-none focus:border-white [color-scheme:dark]" />
-      </div>
-      <div>
-        <label class="block text-xs text-dfinMuted mb-1" for="time">Start Time</label>
-        <input id="time" type="time" bind:value={scheduledTime} required
-          class="w-full bg-dfinBase border border-dfinAccent rounded-lg p-2 text-dfinText focus:outline-none focus:border-white [color-scheme:dark]" />
-      </div>
+    <div class="space-y-3">
+    <div class="flex items-center gap-2 mb-2">
+        <input type="checkbox" id="inbox" bind:checked={sendToInbox} class="accent-dfinAccent" />
+        <label for="inbox" class="text-xs text-dfinText cursor-pointer">Save to Inbox (Plan Later)</label>
+    </div>
+
+    {#if !sendToInbox}
+        <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label class="block text-xs text-dfinMuted mb-1" for="date">Date</label>
+            <input id="date" type="date" bind:value={scheduledDate} required={!sendToInbox}
+            class="w-full bg-dfinBase border border-dfinAccent rounded-lg p-2 text-dfinText focus:outline-none focus:border-white [color-scheme:dark]" />
+        </div>
+        <div>
+            <label class="block text-xs text-dfinMuted mb-1" for="time">Start Time</label>
+            <input id="time" type="time" bind:value={scheduledTime} required={!sendToInbox}
+            class="w-full bg-dfinBase border border-dfinAccent rounded-lg p-2 text-dfinText focus:outline-none focus:border-white [color-scheme:dark]" />
+        </div>
+        </div>
+    {/if}
     </div>
 
     <div>

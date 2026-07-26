@@ -76,7 +76,7 @@
     {:else}
       <!-- SESSION VIEW -->
       <div class="max-w-3xl mx-auto">
-        <Timeline {tasks} />
+        <Timeline {tasks} onTaskUpdate={loadTasks} />
       </div>
     {/if}
   </div>
