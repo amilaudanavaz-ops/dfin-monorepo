@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  /* The zero-glare matte black foundation */
+  --color-dfinBase: #0a0a0a; 
+  
+  /* Deep graphite for surfaces/cards */
+  --color-dfinSurface: #171717; 
+  
+  /* Shining dark accent for active states/gradients */
+  --color-dfinAccent: #262626; 
+  
+  /* Crisp white for active data */
+  --color-dfinText: #f5f5f5; 
+  
+  /* Subtle silver for secondary metadata */
+  --color-dfinMuted: #a3a3a3; 
+
+  /* Custom Gradients */
+  --background-image-shining-dark: linear-gradient(145deg, #1f1f1f, #121212);
+  --background-image-obsidian-glow: radial-gradient(circle at top left, #2a2a2a, #0a0a0a);
+}
+
+/* Apply the Matte Black theme globally */
+body {
+  @apply bg-dfinBase text-dfinText antialiased selection:bg-dfinAccent selection:text-white;
+  
+  /* Hardcoded fallback to prevent default white flash on load */
+  background-color: #0a0a0a; 
+}
