@@ -4,22 +4,18 @@ import Database from '@tauri-apps/plugin-sql';
 let dbInstance: Database | null = null;
 
 export async function getDb() {
-  if (dbInstance) return dbInstance;
+  // BROWSER MOCK: If Tauri is missing, return a dummy database to prevent crashes
+  if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__) {
+    console.warn("[MOCK] Running in browser. SQLite disabled.");
+    return {
+      execute: async () => [],
+      select: async () => []
+    } as any;
+  }
 
-  // This creates (or loads) a physical file named "dfin.db" in the app's local OS storage
-  dbInstance = await Database.load('sqlite:dfin.db');
-
-  // Initialize the raw SQLite tables as a fallback/persistent layer
-  await dbInstance.execute(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      durationMinutes INTEGER NOT NULL,
-      scheduledDate TEXT NOT NULL,
-      scheduledTime TEXT NOT NULL,
-      status TEXT NOT NULL
-    );
-  `);
-
+  // NORMAL TAURI BOOT
+  if (!dbInstance) {
+    dbInstance = await Database.load('sqlite:dfin.db');
+  }
   return dbInstance;
 }

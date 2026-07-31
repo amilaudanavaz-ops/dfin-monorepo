@@ -5,22 +5,32 @@
   import Calendar from '$lib/components/schedule/Calendar.svelte';
   import Timeline from '$lib/components/session/Timeline.svelte';
   import { startReminderEngine } from '$lib/sync/ReminderEngine';
-
+  import { connectToLocalNode } from '$lib/sync/WebSocketClient';
+  import { initializeCRDT, setSyncCallback, getTasksFromCRDT } from '$lib/sync/CRDTEngine';
+  
   let tasks = $state<any[]>([]);
   let errorMsg = $state('');
   let activeView = $state('schedule');
   
-
   onMount(async () => {
     await loadTasks();
+    await initializeCRDT();
     await startReminderEngine();
+
+    // Wire the CRDT network sync callback to instantly update the UI state
+    setSyncCallback(() => {
+      console.log("[UI] Network data received. Refreshing canvas...");
+      tasks = getTasksFromCRDT();
+    });
+    
+    connectToLocalNode();
   });
 
   async function loadTasks() {
     try {
       const db = await getDb();
       // Fetch tasks ordered by time
-      tasks = await db.select('SELECT * FROM tasks ORDER BY scheduledTime ASC');
+      tasks = (await db.select('SELECT * FROM tasks ORDER BY scheduledTime ASC')) as any[];
     } catch (e) {
       errorMsg = `Failed to load tasks: ${e}`;
     }

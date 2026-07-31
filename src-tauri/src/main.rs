@@ -1,6 +1,24 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// src-tauri/src/main.rs
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+mod p2p;
 
 fn main() {
-    dfin_monorepo_lib::run()
+    tauri::Builder::default()
+        // 1. Restore all frontend-required plugins here
+        .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
+        // 2. Setup our custom P2P backend
+        .setup(|_app| {
+            tauri::async_runtime::spawn(async {
+                p2p::start_p2p_server().await;
+            });
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

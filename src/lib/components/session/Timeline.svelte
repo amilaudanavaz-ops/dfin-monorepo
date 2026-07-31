@@ -4,6 +4,7 @@
   import { calculateSessionTimeline, calculateHeight } from './AnchorMath';
   import { getDb } from '$lib/db/database';
   import { getCurrentWindow, Window } from '@tauri-apps/api/window';
+  import { updateLocalTaskInCRDT } from '$lib/sync/CRDTEngine';
   
   let { tasks, onTaskUpdate } = $props<{ tasks: any[], onTaskUpdate: () => Promise<void> }>();
 
@@ -75,7 +76,12 @@
 
     try {
       const db = await getDb();
+      // 1. Update local SQLite storage
       await db.execute('UPDATE tasks SET status = $1 WHERE id = $2', [targetStatus, id]);
+      
+      // 2. NEW: Fire the update into the CRDT Engine for peer-to-peer syncing
+      updateLocalTaskInCRDT(id, { status: targetStatus });
+
       await onTaskUpdate(); 
       console.log(`[UI] Screen refresh complete.`);
     } catch (error) {

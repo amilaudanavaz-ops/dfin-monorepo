@@ -7,6 +7,7 @@ let reminderInterval: ReturnType<typeof setInterval>;
 const notifiedTasks = new Set<string>(); 
 
 export async function startReminderEngine() {
+  if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__) return;
   // 1. Request OS Permission
   let permissionGranted = await isPermissionGranted();
   if (!permissionGranted) {
@@ -26,10 +27,10 @@ async function checkUpcomingTasks() {
   try {
     const db = await getDb();
     // Only fetch pending tasks
-    const tasks = await db.select<any[]>('SELECT * FROM tasks WHERE status = $1', ['pending']);
+    const tasks = (await db.select('SELECT * FROM tasks WHERE...')) as any[];
     const now = new Date();
 
-    tasks.forEach(task => {
+    tasks.forEach((task: any) => {
       if (notifiedTasks.has(task.id)) return;
 
       const taskStart = new Date(`${task.scheduledDate}T${task.scheduledTime}:00`);
