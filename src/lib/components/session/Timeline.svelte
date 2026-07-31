@@ -20,11 +20,37 @@
   let isGrabbing = $state(false);
   let hoveredZone = $state<string | null>(null);
 
+  let inlineTaskTitle = $state('');
+  let inlineTaskDuration = $state(15);
+
   let sessionTasks = $derived(
     sessionActive && t0Timestamp 
       ? calculateSessionTimeline(plannedTasks, t0Timestamp) 
       : plannedTasks
   );
+
+  async function handleInlineQuickAdd(e: KeyboardEvent) {
+    if (e.key === 'Enter' && inlineTaskTitle.trim()) {
+      try {
+        const db = await getDb();
+        const newId = crypto.randomUUID();
+        
+        // Instantly add it to the 'pending' status so it drops right into the current session
+        await db.execute(
+          'INSERT INTO tasks (id, title, durationMinutes, status) VALUES ($1, $2, $3, $4)',
+          [newId, inlineTaskTitle.trim(), inlineTaskDuration, 'pending']
+        );
+        
+        // Sync to CRDT network
+        updateLocalTaskInCRDT(newId, { title: inlineTaskTitle.trim(), durationMinutes: inlineTaskDuration, status: 'pending' });
+        
+        inlineTaskTitle = ''; // Reset input
+        await onTaskUpdate(); // Refresh UI
+      } catch (error) {
+        console.error("[DB] Inline add failed:", error);
+      }
+    }
+  }
 
   async function startSession() {
     t0Timestamp = Date.now();
@@ -79,7 +105,7 @@
       // 1. Update local SQLite storage
       await db.execute('UPDATE tasks SET status = $1 WHERE id = $2', [targetStatus, id]);
       
-      // 2. NEW: Fire the update into the CRDT Engine for peer-to-peer syncing
+      // 2. Fire the update into the CRDT Engine for peer-to-peer syncing
       updateLocalTaskInCRDT(id, { status: targetStatus });
 
       await onTaskUpdate(); 
@@ -93,92 +119,88 @@
 <!-- Global release catcher: If you drop the mouse anywhere on the screen, it fires -->
 <svelte:window onpointerup={handlePointerUp} />
 
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 min-h-150 {isGrabbing ? 'select-none cursor-grabbing' : ''}">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 h-full">
   
-  <!-- LEFT COLUMN: INBOX -->
-  <div class="md:col-span-1 bg-dfinSurface p-5 rounded-xl border border-dfinAccent shadow-lg flex flex-col transition-colors {hoveredZone === 'unassigned' && isGrabbing ? 'border-white bg-dfinSurface/80' : ''}"
-       onpointerenter={() => hoveredZone = 'unassigned'}
-       onpointerleave={() => { if (hoveredZone === 'unassigned') hoveredZone = null; }}>
-       
-    <h2 class="text-sm font-bold text-dfinText uppercase tracking-widest mb-4 border-b border-dfinAccent pb-2 {isGrabbing ? 'pointer-events-none' : ''}">
-      Inbox
-    </h2>
-    
-    <div class="grow space-y-3 overflow-y-auto min-h-[200px] {isGrabbing ? 'pointer-events-none' : ''}">
-      {#if inboxTasks.length === 0}
-        <div class="h-full w-full flex items-center justify-center border-2 border-dashed border-dfinAccent/30 rounded-lg">
-          <p class="text-xs text-dfinMuted italic">Drop to unschedule</p>
+  <!-- THE SESSION QUEUE (Tasks waiting to be done) -->
+  <div class="flex flex-col h-full bg-[#0d0d0d] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden">
+    <div class="px-6 py-4 border-b border-white/5 bg-[#111111]">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center justify-between">
+        Session Queue
+        <span class="bg-white/10 text-gray-300 px-2 py-0.5 rounded-full text-[10px]">{tasks.filter((t: any) => t.status === 'pending').length}</span>
+      </h2>
+    </div>
+
+    <!-- INLINE QUICK ADD -->
+    <div class="px-6 py-3 border-b border-white/5 bg-[#0a0a0a] flex items-center gap-3">
+      <div class="text-gray-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+        </svg>
+      </div>
+      <input 
+        type="text" 
+        bind:value={inlineTaskTitle}
+        onkeydown={handleInlineQuickAdd}
+        placeholder="Quick add to session... (Press Enter)"
+        class="flex-1 bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none"
+      />
+      <input 
+        type="number"
+        bind:value={inlineTaskDuration}
+        class="w-14 bg-[#141414] border border-white/10 rounded px-2 py-1 text-xs text-center text-gray-300 focus:outline-none focus:border-white/30"
+        min="1"
+      />
+      <span class="text-[10px] text-gray-600 uppercase">min</span>
+    </div>
+
+    <!-- Drop Zone: Pending Tasks -->
+    <div 
+      class="flex-1 p-6 overflow-y-auto space-y-3"
+      onpointerenter={() => hoveredZone = 'pending'}
+      onpointerleave={() => { if(hoveredZone === 'pending') hoveredZone = null; }}
+      role="list"
+    >
+      {#each tasks.filter((t: any) => t.status === 'pending') as task}
+        <div 
+          onpointerdown={(e) => handlePointerDown(e, task.id)}
+          role="button" 
+          tabindex="0"
+        >
+          <TaskCard {task} onRefresh={onTaskUpdate} />
         </div>
-      {:else}
-        {#each inboxTasks as task}
-          <!-- The Grab Target -->
-          <div class="p-3 bg-dfinBase border border-dfinAccent/50 rounded-lg hover:border-white transition-colors {isGrabbing ? 'cursor-grabbing opacity-50' : 'cursor-grab'}"
-               role="button"
-               tabindex="0"
-               onpointerdown={(e) => handlePointerDown(e, task.id)}>
-            <h3 class="font-medium text-sm text-dfinText pointer-events-none">{task.title}</h3>
-            <p class="text-xs text-dfinMuted pointer-events-none">{task.durationMinutes}m</p>
-          </div>
-        {/each}
+      {/each}
+      {#if tasks.filter((t: any) => t.status === 'pending').length === 0}
+         <p class="text-xs text-gray-600 italic text-center mt-10">Drag tasks here to build your session.</p>
       {/if}
     </div>
   </div>
 
-  <!-- RIGHT COLUMN: CANVAS -->
-  <div class="md:col-span-2 bg-dfinBase p-6 rounded-xl border border-dfinAccent shadow-2xl relative flex flex-col transition-colors {hoveredZone === 'pending' && isGrabbing ? 'border-white bg-dfinBase/80' : ''}"
-       onpointerenter={() => hoveredZone = 'pending'}
-       onpointerleave={() => { if (hoveredZone === 'pending') hoveredZone = null; }}>
-    
-    <div class="flex justify-between items-center mb-6 border-b border-dfinAccent pb-4 {isGrabbing ? 'pointer-events-none' : ''}">
-      <div>
-        <h2 class="text-xl font-bold text-dfinText flex items-center gap-2">
-          <div class="w-3 h-3 rounded-full {sessionActive ? 'bg-green-500' : 'bg-white animate-pulse'}"></div>
-          Session Canvas
-        </h2>
-        <div class="flex items-center gap-2 mt-2">
-          <label class="text-xs text-dfinMuted" for="hours">Planned Duration:</label>
-          <input id="hours" type="number" min="1" max="12" bind:value={plannedHours} disabled={sessionActive}
-            class="bg-dfinSurface border border-dfinAccent rounded text-xs text-white p-1 w-12 text-center" />
-          <span class="text-xs text-dfinMuted">Hours</span>
-        </div>
-      </div>
-      
-      {#if !sessionActive}
-        <button onclick={startSession} class="px-6 py-2 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors shadow-[0_0_15px_rgba(255,255,255,0.3)] pointer-events-auto">
-          Start Session
-        </button>
-      {/if}
+  <!-- THE ACTIVE EXECUTION CANVAS (Tasks completed) -->
+  <div class="flex flex-col h-full bg-[#0d0d0d] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden relative">
+    <div class="px-6 py-4 border-b border-white/5 bg-gradient-to-r from-[#111111] to-[#1a1a1a]">
+      <h2 class="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+        Execution Matrix
+      </h2>
     </div>
 
-    <div class="relative grow overflow-y-auto pl-8 border-l border-dfinAccent/30 {isGrabbing ? 'pointer-events-none' : ''}"
-         style="height: {calculateHeight(plannedHours * 60)}px; min-height: 400px;">
-      
-      <div class="absolute inset-0 pointer-events-none" 
-           style="background-size: 100% {calculateHeight(60)}px; background-image: linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);">
-      </div>
-      <div class="absolute -left-1.25 top-0 w-2 h-2 rounded-full bg-white z-20 pointer-events-none"></div>
-
-      {#if sessionTasks.length === 0}
-        <div class="h-full flex items-center justify-center">
-          <p class="text-sm text-dfinMuted italic">Drag tasks here to build your session.</p>
+    <!-- Drop Zone: Completed Tasks -->
+    <div 
+      class="flex-1 p-6 overflow-y-auto space-y-3"
+      onpointerenter={() => hoveredZone = 'completed'}
+      onpointerleave={() => { if(hoveredZone === 'completed') hoveredZone = null; }}
+      role="list"
+    >
+      {#each tasks.filter((t: any) => t.status === 'completed') as task}
+        <div 
+          class="opacity-50 hover:opacity-100 transition-opacity" 
+          onpointerdown={(e) => handlePointerDown(e, task.id)}
+          role="button" 
+          tabindex="0"
+        >
+          <TaskCard {task} onRefresh={onTaskUpdate} />
         </div>
-      {:else}
-        <div class="space-y-4 relative z-10 pt-2">
-          {#each sessionTasks as task}
-            <!-- The Grab Target -->
-            <div class="relative {!sessionActive ? (isGrabbing ? 'cursor-grabbing opacity-50' : 'cursor-grab') : ''}"
-                 role="button"
-                 tabindex="0"
-                 onpointerdown={(e) => !sessionActive && handlePointerDown(e, task.id)}>
-                 
-              <div class="absolute -left-9.25 top-4 w-4 h-px bg-dfinAccent pointer-events-none"></div>
-              <div class="pointer-events-none">
-                <TaskCard {task} />
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
+      {/each}
     </div>
   </div>
 </div>
